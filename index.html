@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Object Counter — ระบบนับจำนวนสิ่งของบนเว็บ (Pure HTML5 / No Python)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- TensorFlow.js & COCO-SSD Model (Runs 100% inside Browser via WebGL / No Python) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(17, 24, 39, 0.85);
+      --bg-card-border: rgba(255, 255, 255, 0.09);
+      --primary: #00d2ff;
+      --primary-glow: rgba(0, 210, 255, 0.3);
+      --accent: #10b981;
+      --accent-glow: rgba(16, 185, 129, 0.3);
+      --secondary: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+      --transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Prompt', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      line-height: 1.5;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(0, 210, 255, 0.05) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.04) 0%, transparent 45%);
+    }
+
+    .app-container { max-width: 1540px; margin: 0 auto; padding: 16px 24px; }
+
+    /* Header */
+    .app-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 22px; background: var(--bg-card);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--bg-card-border); border-radius: var(--radius-lg);
+      margin-bottom: 20px; box-shadow: var(--shadow-card);
+    }
+    .header-brand { display: flex; align-items: center; gap: 14px; }
+    .logo-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, #00d2ff, #0072ff);
+      display: flex; align-items: center; justify-content: center; color: #fff;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+    .brand-text h1 {
+      font-size: 1.25rem; font-weight: 700; letter-spacing: 0.5px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .brand-text h1 span {
+      font-size: 0.72rem; padding: 2px 8px; background: rgba(16, 185, 129, 0.18);
+      color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px;
+      font-weight: 600;
+    }
+    .brand-text p { font-size: 0.82rem; color: var(--text-muted); }
+
+    .header-badges { display: flex; align-items: center; gap: 10px; }
+    .badge {
+      padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 500;
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .badge-gpu { background: rgba(16, 185, 129, 0.12); color: #34d399; border-color: rgba(16, 185, 129, 0.25); }
+    .badge-fps { font-family: 'JetBrains Mono', monospace; background: rgba(0, 210, 255, 0.1); color: var(--primary); border-color: rgba(0, 210, 255, 0.2); }
+    .badge-status { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
+    
+    .status-pulse {
+      width: 8px; height: 8px; border-radius: 50%; background-color: #10b981;
+      box-shadow: 0 0 10px #10b981; animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    /* Grid Layout */
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 430px; gap: 22px; }
+    @media (max-width: 1120px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+    /* Video Section */
+    .video-section { display: flex; flex-direction: column; gap: 18px; }
+    .video-card {
+      background: var(--bg-card); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--bg-card-border); border-radius: var(--radius-lg);
+      overflow: hidden; box-shadow: var(--shadow-card);
+    }
+    .video-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 18px; background: rgba(10, 15, 25, 0.7); border-bottom: 1px solid var(--bg-card-border);
+    }
+    .video-title {
+      display: flex; align-items: center; gap: 10px; font-size: 0.85rem;
+      font-weight: 600; letter-spacing: 0.5px; color: var(--text-main);
+    }
+    .rec-dot {
+      width: 9px; height: 9px; border-radius: 50%; background: var(--danger);
+      box-shadow: 0 0 8px var(--danger); animation: blink 1.2s infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    .video-actions { display: flex; align-items: center; gap: 8px; }
+    .icon-btn {
+      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted); padding: 5px 10px; border-radius: 8px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-family: inherit;
+      transition: var(--transition);
+    }
+    .icon-btn:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+
+    .video-viewport {
+      position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000;
+      overflow: hidden; display: flex; align-items: center; justify-content: center;
+    }
+    video#webcamVideo {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;
+    }
+    canvas#overlayCanvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none;
+    }
+
+    /* In-Screen Badge */
+    .screen-stat-badge {
+      position: absolute; top: 16px; right: 16px; background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(10px); border: 1px solid rgba(0, 210, 255, 0.35);
+      padding: 10px 20px; border-radius: 14px; text-align: right; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+      z-index: 10; transition: transform 0.2s;
+    }
+    .screen-stat-badge.pulse-effect {
+      transform: scale(1.08);
+      border-color: #10b981;
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.5);
+    }
+    .ss-label { font-size: 0.78rem; color: var(--text-muted); font-weight: 500; }
+    .ss-value {
+      font-size: 2.2rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+      color: var(--primary); line-height: 1.1;
+    }
+
+    /* Loading Overlay */
+    .loading-overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(9, 13, 22, 0.92); backdrop-filter: blur(12px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; z-index: 50; transition: opacity 0.4s;
+    }
+    .spinner {
+      width: 48px; height: 48px; border: 4px solid rgba(0, 210, 255, 0.15);
+      border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .video-footer {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 18px; background: rgba(10, 15, 25, 0.5);
+      border-top: 1px solid var(--bg-card-border); font-size: 0.85rem;
+    }
+
+    /* Stat Cards Row */
+    .stats-cards-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px;
+    }
+    .stat-card {
+      background: var(--bg-card); backdrop-filter: blur(12px); border: 1px solid var(--bg-card-border);
+      border-radius: var(--radius-md); padding: 16px; display: flex; align-items: center; gap: 14px;
+      box-shadow: var(--shadow-card); transition: var(--transition);
+    }
+    .stat-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.2); }
+    .stat-card.primary { border-left: 4px solid var(--primary); }
+    .stat-card.accent { border-left: 4px solid var(--accent); }
+    .stat-card.secondary { border-left: 4px solid var(--secondary); }
+    .stat-icon { font-size: 1.8rem; }
+    .stat-info { display: flex; flex-direction: column; }
+    .stat-title { font-size: 0.78rem; color: var(--text-muted); }
+    .stat-num {
+      font-size: 1.6rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+      line-height: 1.1; color: var(--text-main);
+    }
+
+    /* Control Sidebar */
+    .control-sidebar { display: flex; flex-direction: column; gap: 16px; }
+    .control-card {
+      background: var(--bg-card); backdrop-filter: blur(12px); border: 1px solid var(--bg-card-border);
+      border-radius: var(--radius-md); padding: 18px; box-shadow: var(--shadow-card);
+    }
+    .card-heading {
+      font-size: 0.95rem; font-weight: 600; color: var(--text-main);
+      margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* Mode Buttons */
+    .mode-toggle-group { display: flex; flex-direction: column; gap: 10px; }
+    .mode-btn {
+      background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm); padding: 14px 14px; display: flex; align-items: center; gap: 12px;
+      cursor: pointer; color: var(--text-muted); transition: var(--transition); text-align: left;
+    }
+    .mode-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-main); }
+    .mode-btn.active {
+      background: rgba(0, 210, 255, 0.12); border-color: var(--primary);
+      color: #fff; box-shadow: 0 0 16px var(--primary-glow);
+    }
+    .mode-btn-icon { font-size: 1.6rem; }
+    .mode-btn-text strong { display: block; font-size: 0.9rem; }
+    .mode-btn-text small { display: block; font-size: 0.74rem; opacity: 0.75; margin-top: 2px; }
+
+    /* Quick Chips */
+    .quick-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .chip {
+      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px; padding: 6px 14px; font-size: 0.82rem; font-family: inherit;
+      color: var(--text-muted); cursor: pointer; transition: var(--transition);
+    }
+    .chip:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+    .chip.active {
+      background: linear-gradient(135deg, #00d2ff, #0072ff); border-color: #00d2ff;
+      color: #fff; box-shadow: 0 0 12px var(--primary-glow); font-weight: 500;
+    }
+
+    .form-label { display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px; }
+    .styled-select {
+      width: 100%; background: rgba(15, 20, 32, 0.85); border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-sm); padding: 10px 14px; color: var(--text-main);
+      font-family: inherit; font-size: 0.88rem; outline: none; cursor: pointer; transition: var(--transition);
+    }
+    .styled-select:focus { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+    .styled-select option { background: #111827; color: #fff; }
+
+    /* Sliders */
+    .slider-field { margin-bottom: 16px; }
+    .slider-header {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px;
+    }
+    .slider-header strong { font-family: 'JetBrains Mono', monospace; color: var(--primary); }
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+      border-radius: 3px; background: rgba(255, 255, 255, 0.12); outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
+      border-radius: 50%; background: var(--primary); cursor: pointer;
+      box-shadow: 0 0 10px var(--primary-glow); transition: var(--transition);
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    .slider-ticks { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim); margin-top: 4px; }
+
+    /* Checkbox toggle */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; font-size: 0.85rem; color: var(--text-muted); cursor: pointer;
+    }
+    .toggle-row input { margin-right: 8px; accent-color: var(--primary); }
+
+    /* Action Buttons */
+    .action-buttons-group { display: flex; flex-direction: column; gap: 10px; }
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px 18px; border-radius: var(--radius-md); font-family: inherit;
+      font-size: 0.95rem; font-weight: 600; text-decoration: none; cursor: pointer;
+      transition: var(--transition); border: none;
+    }
+    .btn-primary { background: linear-gradient(135deg, #00d2ff, #0072ff); color: #fff; box-shadow: 0 4px 18px var(--primary-glow); }
+    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-2px); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); color: var(--text-main); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.14); transform: translateY(-2px); }
+    .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; }
+    .btn-danger:hover { background: rgba(239, 68, 68, 0.25); color: #fff; transform: translateY(-2px); }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+            <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="m16 16-1.5-1.5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>AI OBJECT COUNTER <span>NO PYTHON / WEB AI</span></h1>
+          <p>ระบบตรวจจับและนับจำนวนสิ่งของทำงานบนเว็บเบราว์เซอร์ 100% (TensorFlow.js WebGL)</p>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        <div class="badge badge-gpu" id="badgeEngine">
+          <span class="status-pulse"></span>
+          <span>WebGL In-Browser AI</span>
+        </div>
+        <div class="badge badge-fps">
+          <span id="fpsText">0.0 FPS</span>
+        </div>
+        <div class="badge badge-status" id="badgeStatus">
+          <span>กำลังโหลดโมเดล...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="dashboard-grid">
+      
+      <!-- Video Section -->
+      <section class="video-section">
+        <div class="video-card">
+          <div class="video-header">
+            <div class="video-title">
+              <span class="rec-dot"></span>
+              <span>LIVE CAMERA STREAM</span>
+            </div>
+            
+            <div class="video-actions">
+              <button class="icon-btn" id="btnFlipCamera" onclick="switchCamera()">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0-4.418-3.582-8-8-8s-8 3.582-8 8c0 2.21 1.12 4.16 2.83 5.42L5 18l4.5-1.5L8 12l-1.34 2.01C5.64 12.92 5 11.53 5 10c0-3.866 3.134-7 7-7s7 3.134 7 7c0 1.53-.64 2.92-1.66 4.01L16 12l-1.5 4.5L19 18l-1.83-2.58C18.88 14.16 20 12.21 20 10z"/></svg>
+                <span>สลับกล้อง</span>
+              </button>
+              <button class="icon-btn" id="btnFullscreen" onclick="toggleFullscreen()">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                <span>เต็มจอ</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="video-viewport" id="videoViewport">
+            <!-- Loading Spinner Overlay -->
+            <div class="loading-overlay" id="loadingOverlay">
+              <div class="spinner"></div>
+              <p id="loadingStatus">กำลังโหลดสมองกล AI เข้าสู่เบราว์เซอร์...</p>
+            </div>
+
+            <!-- Video & Canvas -->
+            <video id="webcamVideo" autoplay playsinline muted></video>
+            <canvas id="overlayCanvas"></canvas>
+
+            <!-- Screen stat badge -->
+            <div class="screen-stat-badge" id="screenStatBadge">
+              <div class="ss-label" id="screenBadgeLabel">จำนวนในภาพสด</div>
+              <div class="ss-value" id="screenBadgeCount">0</div>
+            </div>
+          </div>
+
+          <div class="video-footer">
+            <span id="targetStatusText">🎯 กำลังตรวจจับ: <strong id="currentTargetLabel">ขวดน้ำ (bottle)</strong></span>
+            <span class="hint-text" id="modeHintText">💡 โหมด 1: ของอยู่ในกล้องจะนับ เมื่อนำออกเลขจะลดลงตามจริง</span>
+          </div>
+        </div>
+
+        <!-- Stat Cards Row -->
+        <div class="stats-cards-row">
+          <div class="stat-card primary">
+            <div class="stat-icon">📦</div>
+            <div class="stat-info">
+              <span class="stat-title" id="statMainTitle">จำนวนในภาพขณะนี้</span>
+              <span class="stat-num" id="statMainCount">0</span>
+            </div>
+          </div>
+
+          <div class="stat-card accent" id="cardTray" style="display:none;">
+            <div class="stat-icon">📥</div>
+            <div class="stat-info">
+              <span class="stat-title">ยอดสะสมในถาด (Tray Total)</span>
+              <span class="stat-num" id="statTrayCount">0</span>
+            </div>
+          </div>
+
+          <div class="stat-card secondary">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-info">
+              <span class="stat-title">สถิติสูงสุด (Peak)</span>
+              <span class="stat-num" id="statPeakCount">0</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Control Sidebar -->
+      <aside class="control-sidebar">
+        
+        <!-- 1. Mode Selector -->
+        <div class="control-card">
+          <h2 class="card-heading">1. โหมดการนับ (Counting Mode)</h2>
+          <div class="mode-toggle-group">
+            <button class="mode-btn active" id="btnModeInFrame" onclick="setMode('in_frame')">
+              <div class="mode-btn-icon">👁️</div>
+              <div class="mode-btn-text">
+                <strong>1. นับเฉพาะในภาพ (Live In-Frame)</strong>
+                <small>นับของที่เห็นในจอ (เมื่อนำของออกจอเลขจะลดลง)</small>
+              </div>
+            </button>
+            <button class="mode-btn" id="btnModeTray" onclick="setMode('tray')">
+              <div class="mode-btn-icon">📥</div>
+              <div class="mode-btn-text">
+                <strong>2. นับสะสมของในถาด (Tray Counter)</strong>
+                <small>เห็นแล้วนับทันที (เมื่อนำของออกจอเลขยังคงเดิมไม่หาย)</small>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Target Object Selection -->
+        <div class="control-card">
+          <h2 class="card-heading">2. สิ่งของที่ต้องการนับ (Target Objects)</h2>
+          <div class="quick-chips" id="quickChips">
+            <button class="chip active" data-class="bottle">ขวดน้ำ (bottle)</button>
+            <button class="chip" data-class="cup">แก้วน้ำ (cup)</button>
+            <button class="chip" data-class="cell phone">โทรศัพท์ (phone)</button>
+            <button class="chip" data-class="person">คน (person)</button>
+            <button class="chip" data-class="book">หนังสือ (book)</button>
+            <button class="chip" data-class="chair">เก้าอี้ (chair)</button>
+            <button class="chip" data-class="all">ทั้งหมด (All 80)</button>
+          </div>
+
+          <div class="select-wrapper">
+            <label for="allClassesSelect" class="form-label">หรือเลือกวัตถุอื่นๆ (จาก 80 ชนิด):</label>
+            <select id="allClassesSelect" class="styled-select" onchange="onSelectClass(this.value)">
+              <option value="">-- ค้นหา / เลือกชนิดวัตถุ --</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 3. Sensitivity & Settings -->
+        <div class="control-card">
+          <h2 class="card-heading">3. การปรับแต่ง & ความแม่นยำ</h2>
+          
+          <div class="slider-field">
+            <div class="slider-header">
+              <span>Confidence Threshold:</span>
+              <strong id="confVal">45%</strong>
+            </div>
+            <input type="range" id="confSlider" min="20" max="90" value="45" oninput="onConfChange(this.value)">
+            <div class="slider-ticks">
+              <span>20% (ไวขึ้น)</span>
+              <span>90% (แม่นยำสูง)</span>
+            </div>
+          </div>
+
+          <label class="toggle-row">
+            <span>🔊 เสียงเตือน 'ติ๊ง' เมื่อนับชิ้นใหม่เข้าถาด</span>
+            <input type="checkbox" id="chkAudio" checked>
+          </label>
+
+          <div class="source-field" style="margin-top: 10px;">
+            <label for="videoSourceSelect" class="form-label">เลือกกล้องที่เชื่อมต่อ:</label>
+            <select id="videoSourceSelect" class="styled-select" onchange="changeCameraDevice(this.value)">
+              <option value="">กล้องเริ่มต้น (Default Camera)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 4. Action Buttons -->
+        <div class="action-buttons-group">
+          <button class="btn btn-danger" onclick="resetCounter()">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            <span>รีเซ็ตตัวนับ (Reset Counter)</span>
+          </button>
+          
+          <button class="btn btn-secondary" onclick="takeSnapshot()">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span>ถ่ายภาพหน้าจอ (Snapshot)</span>
+          </button>
+        </div>
+
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    /**
+     * COCO 80 Classes English to Thai Dictionary
+     */
+    const COCO_THAI = {
+      "person": "คน", "bicycle": "จักรยาน", "car": "รถยนต์", "motorcycle": "มอเตอร์ไซค์",
+      "airplane": "เครื่องบิน", "bus": "รถบัส", "train": "รถไฟ", "truck": "รถบรรทุก",
+      "boat": "เรือ", "traffic light": "สัญญาณไฟจราจร", "fire hydrant": "หัวดับเพลิง",
+      "stop sign": "ป้ายหยุด", "parking meter": "มิเตอร์จอดรถ", "bench": "ม้านั่ง",
+      "bird": "นก", "cat": "แมว", "dog": "สุนัข", "horse": "ม้า", "sheep": "แกะ",
+      "cow": "วัว", "elephant": "ช้าง", "bear": "หมี", "zebra": "ม้าลาย", "giraffe": "ยีราฟ",
+      "backpack": "กระเป๋าเป้", "umbrella": "ร่ม", "handbag": "กระเป๋าถือ", "tie": "เนกไท",
+      "suitcase": "กระเป๋าเดินทาง", "frisbee": "จานร่อน", "skis": "สกี", "snowboard": "สโนว์บอร์ด",
+      "sports ball": "ลูกบอล", "kite": "ว่าว", "baseball bat": "ไม้เบสบอล",
+      "baseball glove": "ถุงมือเบสบอล", "skateboard": "สเก็ตบอร์ด", "surfboard": "กระดานโต้คลื่น",
+      "tennis racket": "ไม้เทนนิส", "bottle": "ขวดน้ำ", "wine glass": "แก้วไวน์",
+      "cup": "แก้วน้ำ/ถ้วย", "fork": "ส้อม", "knife": "มีด", "spoon": "ช้อน", "bowl": "ชาม",
+      "banana": "กล้วย", "apple": "แอปเปิ้ล", "sandwich": "แซนด์วิช", "orange": "ส้ม",
+      "broccoli": "บรอกโคลี", "carrot": "แครอท", "hot dog": "ฮอทด็อก", "pizza": "พิซซ่า",
+      "donut": "โดนัท", "cake": "เค้ก", "chair": "เก้าอี้", "couch": "โซฟา",
+      "potted plant": "ต้นไม้ในกระถาง", "bed": "เตียง", "dining table": "โต๊ะอาหาร",
+      "toilet": "ชักโครก", "tv": "โทรทัศน์", "laptop": "โน้ตบุ๊ก", "mouse": "เมาส์",
+      "remote": "รีโมท", "keyboard": "คีย์บอร์ด", "cell phone": "โทรศัพท์มือถือ",
+      "microwave": "ไมโครเวฟ", "oven": "เตาอบ", "toaster": "เครื่องปิ้งขนมปัง",
+      "sink": "อ่างล้างจาน", "refrigerator": "ตู้เย็น", "book": "หนังสือ", "clock": "นาฬิกา",
+      "vase": "แจกัน", "scissors": "กรรไกร", "teddy bear": "ตุ๊กตาหมี",
+      "hair drier": "ไดร์เป่าผม", "toothbrush": "แปรงสีฟัน"
+    };
+
+    /**
+     * Web Audio Chime Generator (No external audio files needed)
+     */
+    let audioCtx = null;
+    function playBeep(freq = 660, duration = 0.12) {
+      if (!document.getElementById('chkAudio').checked) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    /**
+     * State Variables
+     */
+    let net = null;
+    let currentMode = 'in_frame'; // 'in_frame' or 'tray'
+    let targetClass = 'bottle';   // 'all' or specific class name
+    let confThreshold = 0.45;
+    let currentFacingMode = 'user';
+    let currentDeviceId = null;
+    let peakCount = 0;
+
+    // Video & Canvas elements
+    const video = document.getElementById('webcamVideo');
+    const canvas = document.getElementById('overlayCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // FPS calculation
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let fps = 30.0;
+
+    /**
+     * Client-Side Object Tracker Implementation
+     */
+    class ClientTracker {
+      constructor() {
+        this.tracks = []; // [{ id, bbox: [x, y, w, h], center: [cx, cy], class, score, confirmed: false, seenFrames: 0, lostFrames: 0, countedInTray: false }]
+        this.nextId = 1;
+        this.trayCount = 0;
+        this.trayHistory = {}; // { class: count }
+      }
+
+      reset() {
+        this.tracks = [];
+        this.nextId = 1;
+        this.trayCount = 0;
+        this.trayHistory = {};
+      }
+
+      // Calculate IOU between two bounding boxes [x, y, w, h]
+      iou(b1, b2) {
+        const x1 = Math.max(b1[0], b2[0]);
+        const y1 = Math.max(b1[1], b2[1]);
+        const x2 = Math.min(b1[0] + b1[2], b2[0] + b2[2]);
+        const y2 = Math.min(b1[1] + b1[3], b2[1] + b2[3]);
+        const interW = Math.max(0, x2 - x1);
+        const interH = Math.max(0, y2 - y1);
+        const interArea = interW * interH;
+        const unionArea = b1[2] * b1[3] + b2[2] * b2[3] - interArea;
+        return unionArea > 0 ? interArea / unionArea : 0;
+      }
+
+      // Distance between centroids
+      dist(c1, c2) {
+        return Math.hypot(c1[0] - c2[0], c1[1] - c2[1]);
+      }
+
+      update(detections) {
+        // detections: [{ bbox: [x, y, w, h], class, score }]
+        const updatedTracks = [];
+        const matchedDetIdxs = new Set();
+
+        for (const track of this.tracks) {
+          let bestMatchIdx = -1;
+          let bestScore = 0;
+
+          for (let i = 0; i < detections.length; i++) {
+            if (matchedDetIdxs.has(i)) continue;
+            const det = detections[i];
+            if (det.class !== track.class) continue;
+
+            const iouVal = this.iou(track.bbox, det.bbox);
+            const detCenter = [det.bbox[0] + det.bbox[2] / 2, det.bbox[1] + det.bbox[3] / 2];
+            const distVal = this.dist(track.center, detCenter);
+
+            // Match if good IOU or reasonably close centroid
+            if (iouVal > 0.25 || distVal < Math.max(det.bbox[2], det.bbox[3]) * 0.8) {
+              const matchScore = iouVal + (1.0 / (1.0 + distVal));
+              if (matchScore > bestScore) {
+                bestScore = matchScore;
+                bestMatchIdx = i;
+              }
+            }
+          }
+
+          if (bestMatchIdx >= 0) {
+            const det = detections[bestMatchIdx];
+            matchedDetIdxs.add(bestMatchIdx);
+
+            track.bbox = det.bbox;
+            track.center = [det.bbox[0] + det.bbox[2] / 2, det.bbox[1] + det.bbox[3] / 2];
+            track.score = det.score;
+            track.seenFrames++;
+            track.lostFrames = 0;
+
+            // Confirm track if seen at least 2 frames (prevents 1-frame jitter/noise)
+            if (track.seenFrames >= 2) {
+              track.confirmed = true;
+              // If in Tray Mode and not yet counted into tray
+              if (!track.countedInTray) {
+                track.countedInTray = true;
+                this.trayCount++;
+                this.trayHistory[track.class] = (this.trayHistory[track.class] || 0) + 1;
+                playBeep(880, 0.15); // High crisp Ding!
+                triggerPulseEffect();
+              }
+            }
+            updatedTracks.push(track);
+          } else {
+            // Track lost in this frame
+            track.lostFrames++;
+            // Keep for up to 12 frames (approx 0.4s) in case of brief occlusion
+            if (track.lostFrames <= 12) {
+              updatedTracks.push(track);
+            }
+          }
+        }
+
+        // Add new tracks for unmatched detections
+        for (let i = 0; i < detections.length; i++) {
+          if (!matchedDetIdxs.has(i)) {
+            const det = detections[i];
+            const newTrack = {
+              id: this.nextId++,
+              bbox: det.bbox,
+              center: [det.bbox[0] + det.bbox[2] / 2, det.bbox[1] + det.bbox[3] / 2],
+              class: det.class,
+              score: det.score,
+              confirmed: false,
+              seenFrames: 1,
+              lostFrames: 0,
+              countedInTray: false
+            };
+            updatedTracks.push(newTrack);
+          }
+        }
+
+        this.tracks = updatedTracks;
+        return this.tracks.filter(t => t.lostFrames === 0);
+      }
+    }
+
+    const tracker = new ClientTracker();
+
+    /**
+     * Initialize Application & Model
+     */
+    async function init() {
+      populateClassesSelect();
+      initQuickChips();
+
+      try {
+        document.getElementById('loadingStatus').textContent = "กำลังโหลดสมองกล AI (TensorFlow.js COCO-SSD)...";
+        net = await cocoSsd.load();
+        
+        document.getElementById('loadingStatus').textContent = "กำลังเปิดกล้องเว็บแคม...";
+        await startCamera();
+        await enumerateCameras();
+
+        document.getElementById('loadingOverlay').style.opacity = '0';
+        setTimeout(() => document.getElementById('loadingOverlay').style.display = 'none', 400);
+
+        const badge = document.getElementById('badgeStatus');
+        badge.style.background = 'rgba(16, 185, 129, 0.15)';
+        badge.style.color = '#34d399';
+        badge.textContent = 'พร้อมตรวจจับ AI (ออนไลน์)';
+
+        // Start Inference Loop
+        requestAnimationFrame(predictLoop);
+
+      } catch (err) {
+        console.error("Initialization failed:", err);
+        document.getElementById('loadingStatus').innerHTML = `
+          <strong style="color: #ef4444;">เกิดข้อผิดพลาดในการเปิดกล้องหรือโหลดโมเดล:</strong><br>
+          ${err.message}<br><br>
+          <small>กรุณาตรวจสอบว่าได้อนุญาตให้เบราว์เซอร์เข้าถึงกล้องแล้ว หรือลองเปิดบน Google Chrome / Edge</small>
+        `;
+      }
+    }
+
+    async function startCamera() {
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(t => t.stop());
+      }
+
+      const constraints = {
+        video: currentDeviceId ? { deviceId: { exact: currentDeviceId } } : { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+
+      return new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          video.play();
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          resolve();
+        };
+      });
+    }
+
+    async function enumerateCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        const select = document.getElementById('videoSourceSelect');
+        select.innerHTML = '';
+
+        videoDevices.forEach((dev, idx) => {
+          const opt = document.createElement('option');
+          opt.value = dev.deviceId;
+          opt.textContent = dev.label || `กล้องที่ ${idx + 1}`;
+          select.appendChild(opt);
+        });
+      } catch (e) {}
+    }
+
+    async function changeCameraDevice(deviceId) {
+      if (!deviceId) return;
+      currentDeviceId = deviceId;
+      await startCamera();
+    }
+
+    async function switchCamera() {
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      currentDeviceId = null;
+      await startCamera();
+    }
+
+    function toggleFullscreen() {
+      const el = document.getElementById('videoViewport');
+      if (!document.fullscreenElement) {
+        el.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    /**
+     * Real-Time Inference Loop
+     */
+    async function predictLoop() {
+      if (net && video.readyState === 4) {
+        // FPS calculation
+        const now = performance.now();
+        frameCount++;
+        if (now - lastTime >= 500) {
+          fps = (frameCount * 1000) / (now - lastTime);
+          document.getElementById('fpsText').textContent = `${fps.toFixed(1)} FPS`;
+          frameCount = 0;
+          lastTime = now;
+        }
+
+        // Run detection
+        const rawDetections = await net.detect(video);
+
+        // Filter by target class and confidence threshold
+        const filtered = rawDetections.filter(d => {
+          if (d.score < confThreshold) return false;
+          if (targetClass === 'all') return true;
+          return d.class.toLowerCase() === targetClass.toLowerCase();
+        });
+
+        // Update Tracker
+        const activeTracks = tracker.update(filtered);
+
+        // Calculate In-Frame counts
+        const inFrameCount = activeTracks.length;
+        if (inFrameCount > peakCount) {
+          peakCount = inFrameCount;
+          document.getElementById('statPeakCount').textContent = peakCount;
+        }
+
+        // Update UI Numbers based on active Mode
+        if (currentMode === 'in_frame') {
+          // Mode 1: In-Frame Live Count (Decreases when object leaves)
+          document.getElementById('statMainCount').textContent = inFrameCount;
+          document.getElementById('screenBadgeCount').textContent = inFrameCount;
+        } else {
+          // Mode 2: Tray / Cumulative Inventory Count (Persists when object leaves!)
+          document.getElementById('statMainCount').textContent = tracker.trayCount;
+          document.getElementById('screenBadgeCount').textContent = tracker.trayCount;
+          document.getElementById('statTrayCount').textContent = `${tracker.trayCount} (ในจอ: ${inFrameCount})`;
+        }
+
+        // Draw Canvas Graphics
+        drawDetections(activeTracks);
+      }
+
+      requestAnimationFrame(predictLoop);
+    }
+
+    /**
+     * Draw Bounding Boxes and Information Badges
+     */
+    function drawDetections(tracks) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      tracks.forEach(t => {
+        const [x, y, w, h] = t.bbox;
+        const thaiName = COCO_THAI[t.class] || t.class;
+        const color = t.countedInTray ? '#10b981' : '#00d2ff';
+
+        // Bounding Box
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = color;
+        ctx.strokeRect(x, y, w, h);
+
+        // Corner accents
+        const cLen = Math.min(18, w * 0.2);
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = color;
+        // Top-Left
+        ctx.beginPath(); ctx.moveTo(x, y + cLen); ctx.lineTo(x, y); ctx.lineTo(x + cLen, y); ctx.stroke();
+        // Top-Right
+        ctx.beginPath(); ctx.moveTo(x + w - cLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cLen); ctx.stroke();
+        // Bottom-Left
+        ctx.beginPath(); ctx.moveTo(x, y + h - cLen); ctx.lineTo(x, y + h); ctx.lineTo(x + cLen, y + h); ctx.stroke();
+        // Bottom-Right
+        ctx.beginPath(); ctx.moveTo(x + w - cLen, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - cLen); ctx.stroke();
+
+        // Center dot
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(t.center[0], t.center[1], 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Label Badge
+        const labelText = `#${t.id} ${thaiName} (${Math.round(t.score * 100)}%)`;
+        ctx.font = 'bold 16px Prompt, sans-serif';
+        const textWidth = ctx.measureText(labelText).width;
+        const badgeY = Math.max(26, y);
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(x, badgeY - 24, textWidth + 16, 26, 6);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(labelText, x + 8, badgeY - 6);
+      });
+    }
+
+    /**
+     * Mode Switching Logic
+     */
+    function setMode(mode) {
+      currentMode = mode;
+      const btnInFrame = document.getElementById('btnModeInFrame');
+      const btnTray = document.getElementById('btnModeTray');
+      const cardTray = document.getElementById('cardTray');
+      const statMainTitle = document.getElementById('statMainTitle');
+      const screenBadgeLabel = document.getElementById('screenBadgeLabel');
+      const modeHint = document.getElementById('modeHintText');
+
+      if (mode === 'in_frame') {
+        btnInFrame.classList.add('active');
+        btnTray.classList.remove('active');
+        cardTray.style.display = 'none';
+        statMainTitle.textContent = 'จำนวนในภาพขณะนี้';
+        screenBadgeLabel.textContent = 'ตรวจพบขณะนี้';
+        modeHint.textContent = '💡 โหมด 1: ของอยู่ในกล้องจะนับ เมื่อนำออกเลขจะลดลงตามจริงทันที';
+      } else {
+        btnTray.classList.add('active');
+        btnInFrame.classList.remove('active');
+        cardTray.style.display = 'flex';
+        statMainTitle.textContent = 'ยอดสะสมในถาด (Tray Total)';
+        screenBadgeLabel.textContent = 'สะสมในถาด';
+        modeHint.textContent = '💡 โหมด 2: เห็นแล้วนับเลย เมื่อนำของออกจากกล้องเลขยังคงเดิมไม่หาย';
+        playBeep(520, 0.1);
+      }
+    }
+
+    /**
+     * Target Class Selection
+     */
+    function initQuickChips() {
+      const chips = document.querySelectorAll('.quick-chips .chip');
+      chips.forEach(chip => {
+        chip.addEventListener('click', () => {
+          chips.forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+
+          targetClass = chip.dataset.class;
+          document.getElementById('allClassesSelect').value = '';
+          updateTargetDisplay(chip.textContent);
+        });
+      });
+    }
+
+    function onSelectClass(cls) {
+      if (!cls) return;
+      document.querySelectorAll('.quick-chips .chip').forEach(c => c.classList.remove('active'));
+      targetClass = cls;
+      const thName = COCO_THAI[cls] || cls;
+      updateTargetDisplay(`${thName} (${cls})`);
+    }
+
+    function updateTargetDisplay(text) {
+      document.getElementById('currentTargetLabel').textContent = text;
+    }
+
+    function populateClassesSelect() {
+      const select = document.getElementById('allClassesSelect');
+      Object.entries(COCO_THAI).forEach(([en, th]) => {
+        const opt = document.createElement('option');
+        opt.value = en;
+        opt.textContent = `${th} (${en})`;
+        select.appendChild(opt);
+      });
+    }
+
+    function onConfChange(val) {
+      confThreshold = parseFloat(val) / 100.0;
+      document.getElementById('confVal').textContent = `${val}%`;
+    }
+
+    function resetCounter() {
+      tracker.reset();
+      peakCount = 0;
+      document.getElementById('statMainCount').textContent = '0';
+      document.getElementById('screenBadgeCount').textContent = '0';
+      document.getElementById('statTrayCount').textContent = '0';
+      document.getElementById('statPeakCount').textContent = '0';
+      playBeep(440, 0.2);
+    }
+
+    function triggerPulseEffect() {
+      const badge = document.getElementById('screenStatBadge');
+      badge.classList.add('pulse-effect');
+      setTimeout(() => badge.classList.remove('pulse-effect'), 400);
+    }
+
+    function takeSnapshot() {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tCtx = tempCanvas.getContext('2d');
+
+      // Draw video frame first
+      tCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+      // Draw detection canvas on top
+      tCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+
+      const link = document.createElement('a');
+      link.download = `AI_Count_Snapshot_${Date.now()}.jpg`;
+      link.href = tempCanvas.toDataURL('image/jpeg', 0.92);
+      link.click();
+    }
+
+    // Start on load
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
