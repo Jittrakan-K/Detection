@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Standalone Object Counter (ไม่ต้องใช้ Server)</title>
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --bg-card: #161f30;
+      --border: #283548;
+      --cyan: #06b6d4;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+      --amber: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    }
+
+    body {
+      background: var(--bg-main);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      max-width: 1280px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 14px 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-standalone {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid var(--emerald);
+      color: #34d399;
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+    }
+
+    @media (max-width: 900px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-card.highlight {
+      border-color: var(--emerald);
+      background: linear-gradient(145deg, #161f30, #0f2b22);
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: #fff;
+      margin-top: 4px;
+    }
+
+    .stat-card.highlight .stat-value {
+      color: #34d399;
+    }
+
+    /* Main Workspace */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+    }
+
+    @media (max-width: 1024px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    .viewport-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4/3;
+      max-height: 480px;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    video { display: none; }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .controls-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #38bdf8;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .control-label span:last-child {
+      color: var(--cyan);
+      font-weight: 700;
+    }
+
+    select, input[type="file"], button {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0b0f19;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button.btn-primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border-color: #2563eb;
+      font-weight: 600;
+    }
+
+    button.btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    button.btn-danger {
+      background: rgba(244, 63, 94, 0.15);
+      border-color: var(--rose);
+      color: #fda4af;
+    }
+
+    button.btn-danger:hover {
+      background: var(--rose);
+      color: #fff;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--cyan);
+      cursor: pointer;
+    }
+
+    /* History Table */
+    .history-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .table-container {
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    th {
+      background: #0b0f19;
+      color: var(--text-muted);
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #1f293d;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- Top Bar -->
+    <header>
+      <div class="brand-title">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        Standalone Object Counter (Client-Side HTML5)
+      </div>
+      <div class="badge-standalone">ไม่ต้องใช้ Server / ดับเบิลคลิกเปิดได้ทันที</div>
+    </header>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card highlight">
+        <div class="stat-label">จำนวนน็อตที่นับได้ (Count)</div>
+        <div class="stat-value" id="countDisplay">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">ตรวจพบในเฟรม (Active)</div>
+        <div class="stat-value" id="activeDisplay">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">ความเร็วเฟรมเรต (FPS)</div>
+        <div class="stat-value" id="fpsDisplay">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">เป้าหมาย (Goal)</div>
+        <div class="stat-value" id="goalDisplay">100%</div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="main-grid">
+      
+      <!-- Video Viewport -->
+      <div class="viewport-card">
+        <div class="canvas-container">
+          <video id="videoElement" playsinline loop muted></video>
+          <canvas id="viewCanvas" width="640" height="480"></canvas>
+        </div>
+
+        <div style="display: flex; gap: 10px; width: 100%;">
+          <button id="toggleMaskBtn" style="flex: 1;">ดูภาพขาวดำ (Binary Mask)</button>
+          <button id="resetCountBtn" class="btn-danger" style="flex: 1;">รีเซ็ตตัวนับ</button>
+        </div>
+      </div>
+
+      <!-- Controls Panel -->
+      <div class="controls-card">
+        
+        <div class="control-row">
+          <div class="section-title">แหล่งข้อมูลภาพ (Input Source)</div>
+          <select id="sourceSelect">
+            <option value="sim">1. โหมดจำลองน็อตหล่น (Simulator)</option>
+            <option value="file">2. โหลดไฟล์วิดีโอจากเครื่อง (.mp4, .mov)</option>
+            <option value="cam">3. กล้องเว็บแคม (Webcam - ถ้าเบราว์เซอร์อนุญาต)</option>
+          </select>
+        </div>
+
+        <div class="control-row" id="fileUploadRow" style="display: none;">
+          <div class="control-label"><span>เลือกไฟล์คลิปวิดีโอน็อตไหลในถาด</span></div>
+          <input type="file" id="videoFileInput" accept="video/mp4,video/webm,video/quicktime" />
+        </div>
+
+        <div class="control-row">
+          <div class="section-title">ตำแหน่งเส้นนับ (Virtual Tripwire)</div>
+          <div class="control-label">
+            <span>ระดับความสูงเส้นแกน Y</span>
+            <span id="lineYVal">50%</span>
+          </div>
+          <input type="range" id="lineYSlider" min="10" max="90" value="50" />
+        </div>
+
+        <div class="control-row">
+          <div class="section-title">ปรับจูนคอนทราสต์น็อต (Threshold Tuning)</div>
+          <div class="control-label">
+            <span>ความไวแสงขาว-ดำ (Threshold)</span>
+            <span id="threshVal">110</span>
+          </div>
+          <input type="range" id="threshSlider" min="20" max="240" value="110" />
+        </div>
+
+        <div class="control-row">
+          <div class="control-label">
+            <span>ขนาดน็อตขั้นต่ำ (Min Size px)</span>
+            <span id="minAreaVal">150</span>
+          </div>
+          <input type="range" id="minAreaSlider" min="30" max="2500" value="150" />
+        </div>
+
+        <div class="control-row">
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; cursor: pointer;">
+            <input type="checkbox" id="soundToggle" checked style="width: 18px; height: 18px; accent-color: var(--cyan);" />
+            <span>เสียง Beep เตือนเมื่อนับได้</span>
+          </label>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- History Logs -->
+    <div class="history-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 0.9rem; font-weight: 700; color: #38bdf8;">ประวัติรายการที่นับได้ (Counting History)</div>
+        <button id="exportCsvBtn" style="width: auto; padding: 6px 14px;">ส่งออกเป็น CSV / Excel</button>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Track ID</th>
+              <th>เวลา</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 15px;">ยังไม่มีข้อมูล</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // --- Application State ---
+    const state = {
+      source: 'sim',
+      showMask: false,
+      threshold: 110,
+      minArea: 150,
+      lineYRatio: 0.5,
+      soundEnabled: true,
+      totalCount: 0
+    };
+
+    const canvas = document.getElementById('viewCanvas');
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById('videoElement');
+
+    // Off-screen canvas for fast 60fps processing
+    const procCanvas = document.createElement('canvas');
+    procCanvas.width = 320;
+    procCanvas.height = 240;
+    const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+
+    // Web Audio Beep
+    let audioCtx = null;
+    function playBeep() {
+      if (!state.soundEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.1);
+      } catch (e) {}
+    }
+
+    // Centroid Tracker (Prevents Double Counting)
+    class CentroidTracker {
+      constructor(maxDisappeared = 10, maxDistance = 60) {
+        this.nextID = 1;
+        this.objects = new Map();
+        this.maxDisappeared = maxDisappeared;
+        this.maxDistance = maxDistance;
+      }
+      register(centroid, bbox) {
+        this.objects.set(this.nextID, {
+          centroid: centroid,
+          prevCentroid: centroid,
+          disappeared: 0,
+          counted: false,
+          bbox: bbox
+        });
+        this.nextID++;
+      }
+      update(rects) {
+        if (rects.length === 0) {
+          for (let [id, obj] of this.objects.entries()) {
+            obj.disappeared++;
+            if (obj.disappeared > this.maxDisappeared) this.objects.delete(id);
+          }
+          return this.objects;
+        }
+
+        const inputCentroids = rects.map(r => [r.x + r.w / 2, r.y + r.h / 2]);
+        if (this.objects.size === 0) {
+          for (let i = 0; i < inputCentroids.length; i++) this.register(inputCentroids[i], rects[i]);
+        } else {
+          const objectIDs = Array.from(this.objects.keys());
+          const objectCentroids = objectIDs.map(id => this.objects.get(id).centroid);
+          const usedInput = new Set();
+          const usedObject = new Set();
+          const distMatrix = [];
+
+          for (let i = 0; i < objectCentroids.length; i++) {
+            for (let j = 0; j < inputCentroids.length; j++) {
+              const dx = objectCentroids[i][0] - inputCentroids[j][0];
+              const dy = objectCentroids[i][1] - inputCentroids[j][1];
+              distMatrix.push({ objIdx: i, inpIdx: j, dist: Math.sqrt(dx * dx + dy * dy) });
+            }
+          }
+          distMatrix.sort((a, b) => a.dist - b.dist);
+
+          for (let item of distMatrix) {
+            if (usedObject.has(item.objIdx) || usedInput.has(item.inpIdx)) continue;
+            if (item.dist > this.maxDistance) break;
+
+            const id = objectIDs[item.objIdx];
+            const obj = this.objects.get(id);
+            obj.prevCentroid = [...obj.centroid];
+            obj.centroid = inputCentroids[item.inpIdx];
+            obj.bbox = rects[item.inpIdx];
+            obj.disappeared = 0;
+            usedObject.add(item.objIdx);
+            usedInput.add(item.inpIdx);
+          }
+
+          for (let i = 0; i < objectIDs.length; i++) {
+            if (!usedObject.has(i)) {
+              const id = objectIDs[i];
+              const obj = this.objects.get(id);
+              obj.disappeared++;
+              if (obj.disappeared > this.maxDisappeared) this.objects.delete(id);
+            }
+          }
+          for (let j = 0; j < inputCentroids.length; j++) {
+            if (!usedInput.has(j)) this.register(inputCentroids[j], rects[j]);
+          }
+        }
+        return this.objects;
+      }
+    }
+
+    const tracker = new CentroidTracker();
+
+    // Simulation of falling nuts
+    const nuts = [];
+    let lastSpawn = 0;
+    class Nut {
+      constructor() {
+        this.x = 80 + Math.random() * (procCanvas.width - 160);
+        this.y = -20;
+        this.speed = 2.2 + Math.random() * 1.8;
+        this.r = 14 + Math.random() * 8;
+        this.rot = Math.random() * Math.PI;
+        this.rotSpd = (Math.random() - 0.5) * 0.08;
+      }
+      update() { this.y += this.speed; this.rot += this.rotSpd; }
+      draw(c) {
+        c.save();
+        c.translate(this.x, this.y);
+        c.rotate(this.rot);
+        c.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          const px = this.r * Math.cos(a);
+          const py = this.r * Math.sin(a);
+          if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+        }
+        c.closePath();
+        c.fillStyle = '#1e293b';
+        c.fill();
+        c.beginPath();
+        c.arc(0, 0, this.r * 0.45, 0, Math.PI * 2);
+        c.fillStyle = '#f8fafc';
+        c.fill();
+        c.restore();
+      }
+    }
+
+    // Fast Blob Detection
+    function detectBlobs(binaryData, width, height) {
+      const visited = new Uint8Array(width * height);
+      const blobs = [];
+      const scaleX = canvas.width / width;
+      const scaleY = canvas.height / height;
+      const scaleArea = scaleX * scaleY;
+
+      for (let y = 1; y < height - 1; y += 2) {
+        for (let x = 1; x < width - 1; x += 2) {
+          const idx = y * width + x;
+          if (binaryData[idx] === 255 && visited[idx] === 0) {
+            let minX = x, maxX = x, minY = y, maxY = y;
+            let count = 0;
+            const queue = [idx];
+            visited[idx] = 1;
+
+            let head = 0;
+            while (head < queue.length) {
+              const curr = queue[head++];
+              const cy = Math.floor(curr / width);
+              const cx = curr % width;
+              count++;
+              if (cx < minX) minX = cx;
+              if (cx > maxX) maxX = cx;
+              if (cy < minY) minY = cy;
+              if (cy > maxY) maxY = cy;
+
+              const neighbors = [curr - 1, curr + 1, curr - width, curr + width];
+              for (let n of neighbors) {
+                if (n >= 0 && n < binaryData.length && binaryData[n] === 255 && visited[n] === 0) {
+                  visited[n] = 1;
+                  queue.push(n);
+                }
+              }
+            }
+
+            const estArea = count * scaleArea * 4;
+            if (estArea >= state.minArea) {
+              blobs.push({
+                x: minX * scaleX,
+                y: minY * scaleY,
+                w: (maxX - minX + 1) * scaleX,
+                h: (maxY - minY + 1) * scaleY
+              });
+            }
+          }
+        }
+      }
+      return blobs;
+    }
+
+    // Main Processing Loop
+    let lineFlash = 0;
+    let frames = 0;
+    let lastFpsUpdate = performance.now();
+
+    function loop() {
+      const now = performance.now();
+
+      // 1. Draw input to procCanvas
+      if (state.source === 'sim') {
+        if (now - lastSpawn > 1000 + Math.random() * 800) {
+          nuts.push(new Nut());
+          lastSpawn = now;
+        }
+        procCtx.fillStyle = '#f8fafc';
+        procCtx.fillRect(0, 0, procCanvas.width, procCanvas.height);
+        for (let i = nuts.length - 1; i >= 0; i--) {
+          nuts[i].update();
+          nuts[i].draw(procCtx);
+          if (nuts[i].y > procCanvas.height + 40) nuts.splice(i, 1);
+        }
+      } else {
+        if (video.readyState >= 2) {
+          procCtx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
+        }
+      }
+
+      // 2. Grayscale & Threshold
+      const imgData = procCtx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+      const data = imgData.data;
+      const total = procCanvas.width * procCanvas.height;
+      const binary = new Uint8Array(total);
+      for (let i = 0; i < total; i++) {
+        const lum = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+        const isObj = lum < state.threshold;
+        binary[i] = isObj ? 255 : 0;
+        if (state.showMask) {
+          data[i * 4] = isObj ? 255 : 0;
+          data[i * 4 + 1] = isObj ? 255 : 0;
+          data[i * 4 + 2] = isObj ? 255 : 0;
+        }
+      }
+
+      // 3. Detect Blobs & Update Tracker
+      const blobs = detectBlobs(binary, procCanvas.width, procCanvas.height);
+      const tracked = tracker.update(blobs);
+      document.getElementById('activeDisplay').innerText = tracked.size;
+
+      // 4. Check Line Crossing
+      const lineY = canvas.height * state.lineYRatio;
+      for (let [id, obj] of tracked.entries()) {
+        const prevY = obj.prevCentroid[1];
+        const currY = obj.centroid[1];
+        if (!obj.counted && prevY <= lineY && currY > lineY) {
+          obj.counted = true;
+          state.totalCount++;
+          document.getElementById('countDisplay').innerText = state.totalCount;
+          lineFlash = 12;
+          playBeep();
+          addLog(id);
+        }
+      }
+
+      // 5. Render Main View
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (state.showMask) {
+        procCtx.putImageData(imgData, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(procCanvas, 0, 0, canvas.width, canvas.height);
+      } else {
+        if (state.source === 'sim') {
+          ctx.drawImage(procCanvas, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      // 6. Draw Tripwire Line
+      ctx.save();
+      ctx.lineWidth = lineFlash > 0 ? 6 : 3;
+      ctx.strokeStyle = lineFlash > 0 ? '#10b981' : '#06b6d4';
+      if (lineFlash > 0) lineFlash--;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, lineY);
+      ctx.lineTo(canvas.width, lineY);
+      ctx.stroke();
+      ctx.restore();
+
+      // 7. Draw Boxes
+      for (let [id, obj] of tracked.entries()) {
+        ctx.strokeStyle = obj.counted ? '#10b981' : '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(obj.bbox.x, obj.bbox.y, obj.bbox.w, obj.bbox.h);
+        ctx.fillStyle = obj.counted ? '#10b981' : '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(obj.centroid[0], obj.centroid[1], 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(`ID #${id}`, obj.bbox.x, Math.max(15, obj.bbox.y - 5));
+      }
+
+      // FPS
+      frames++;
+      if (now - lastFpsUpdate >= 500) {
+        document.getElementById('fpsDisplay').innerText = Math.round((frames * 1000) / (now - lastFpsUpdate));
+        frames = 0;
+        lastFpsUpdate = now;
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    // Log & CSV
+    const logs = [];
+    function addLog(id) {
+      const time = new Date().toLocaleTimeString();
+      logs.unshift({ id, time });
+      if (logs.length > 50) logs.pop();
+      const body = document.getElementById('historyBody');
+      body.innerHTML = logs.map((l, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td><strong style="color: #38bdf8;">#${l.id}</strong></td>
+          <td>${l.time}</td>
+          <td><span style="color: #34d399;">✓ COUNTED</span></td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('exportCsvBtn').addEventListener('click', () => {
+      if (logs.length === 0) return alert("ยังไม่มีข้อมูลให้นำออก");
+      let csv = "Index,Track_ID,Timestamp,Status\n";
+      logs.forEach((l, i) => { csv += `${i+1},${l.id},${l.time},COUNTED\n`; });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `counting_report_${Date.now()}.csv`;
+      a.click();
+    });
+
+    // Event Handlers
+    document.getElementById('threshSlider').addEventListener('input', (e) => {
+      state.threshold = parseInt(e.target.value);
+      document.getElementById('threshVal').innerText = state.threshold;
+    });
+
+    document.getElementById('minAreaSlider').addEventListener('input', (e) => {
+      state.minArea = parseInt(e.target.value);
+      document.getElementById('minAreaVal').innerText = state.minArea;
+    });
+
+    document.getElementById('lineYSlider').addEventListener('input', (e) => {
+      state.lineYRatio = parseInt(e.target.value) / 100;
+      document.getElementById('lineYVal').innerText = `${e.target.value}%`;
+    });
+
+    document.getElementById('toggleMaskBtn').addEventListener('click', () => {
+      state.showMask = !state.showMask;
+      document.getElementById('toggleMaskBtn').innerText = state.showMask ? 'ดูภาพปกติ' : 'ดูภาพขาวดำ (Binary Mask)';
+    });
+
+    document.getElementById('resetCountBtn').addEventListener('click', () => {
+      state.totalCount = 0;
+      document.getElementById('countDisplay').innerText = '0';
+      tracker.objects.clear();
+    });
+
+    document.getElementById('soundToggle').addEventListener('change', (e) => {
+      state.soundEnabled = e.target.checked;
+    });
+
+    // Video File / Source Switching
+    const sourceSelect = document.getElementById('sourceSelect');
+    const fileUploadRow = document.getElementById('fileUploadRow');
+    const videoFileInput = document.getElementById('videoFileInput');
+
+    sourceSelect.addEventListener('change', async (e) => {
+      state.source = e.target.value;
+      fileUploadRow.style.display = state.source === 'file' ? 'flex' : 'none';
+
+      if (state.source === 'cam') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+          video.srcObject = stream;
+          video.play();
+        } catch (err) {
+          alert("ไม่สามารถเปิดกล้องผ่าน file:/// ได้ (เป็นกฎความปลอดภัยของเบราว์เซอร์)\nแนะนำให้ใช้ 'โหมดโหลดไฟล์วิดีโอ' หรือ 'โหมดจำลอง' แทนครับ");
+          sourceSelect.value = 'sim';
+          state.source = 'sim';
+        }
+      }
+    });
+
+    videoFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const url = URL.createObjectURL(file);
+        video.srcObject = null;
+        video.src = url;
+        video.play();
+      }
+    });
+
+    // Start
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
